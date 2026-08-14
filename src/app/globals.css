@@ -1,0 +1,97 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* AI-BOS design tokens */
+  --color-primary: #3730a3;
+  --color-primary-hover: #2e2682;
+
+  --color-neutral-950: #0f1117;
+  --color-neutral-600: #5b6270;
+  --color-neutral-200: #e4e6eb;
+  --color-neutral-50: #f7f8fa;
+
+  --color-surface: #ffffff;
+
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-danger: #b91c1c;
+  --color-info: #0e7490;
+
+  --color-ai-accent: #7c3aed;
+
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-heading: var(--font-inter);
+
+  /* shadcn primitive tokens, remapped to the AI-BOS palette above */
+  --color-background: var(--color-surface);
+  --color-foreground: var(--color-neutral-950);
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-neutral-950);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-neutral-950);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--color-neutral-50);
+  --color-secondary-foreground: var(--color-neutral-950);
+  --color-muted: var(--color-neutral-50);
+  --color-muted-foreground: var(--color-neutral-600);
+  --color-accent: var(--color-neutral-50);
+  --color-accent-foreground: var(--color-neutral-950);
+  --color-destructive: var(--color-danger);
+  --color-border: var(--color-neutral-200);
+  --color-input: var(--color-neutral-200);
+  --color-ring: var(--color-primary);
+
+  --color-sidebar: var(--color-surface);
+  --color-sidebar-foreground: var(--color-neutral-950);
+  --color-sidebar-primary: var(--color-primary);
+  --color-sidebar-primary-foreground: #ffffff;
+  --color-sidebar-accent: var(--color-neutral-50);
+  --color-sidebar-accent-foreground: var(--color-neutral-950);
+  --color-sidebar-border: var(--color-neutral-200);
+  --color-sidebar-ring: var(--color-primary);
+}
+
+:root {
+  --radius: 0.375rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@layer utilities {
+  /* Reserved exclusively for AI-originated content surfaces (AIPanel etc).
+     Do not reuse ai-accent for any non-AI UI. */
+  .animate-ai-pulse {
+    animation: ai-pulse 2s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-ai-pulse {
+      animation: none;
+    }
+  }
+}
+
+@keyframes ai-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
