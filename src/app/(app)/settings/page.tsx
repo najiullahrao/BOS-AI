@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, X, TriangleAlert } from "lucide-react";
+import { Upload, X, TriangleAlert, Download } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DetailLayout } from "@/components/shared/detail-layout";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -14,6 +14,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PasswordInput } from "@/components/auth/password-input";
 import { MfaCodeInput } from "@/components/auth/mfa-code-input";
@@ -25,6 +27,7 @@ import { useMockOrgDeletion } from "@/lib/use-mock-org-deletion";
 import { mockActiveSessions, mockLinkedAccounts, mockLocationFromIp, formatDateTime, type ActiveSession } from "@/lib/mock-sessions";
 import { mockSession, type UserRole } from "@/lib/mock-data";
 import { canEditOrgBranding, canManageOrgDangerZone } from "@/lib/org-permissions";
+import { cn } from "@/lib/utils";
 import {
   mockOrgDetail,
   mockSaveOrgGeneral,
@@ -33,6 +36,25 @@ import {
   IANA_TIMEZONES,
   ISO_CURRENCIES,
 } from "@/lib/mock-org";
+import {
+  getNotificationPreferences,
+  saveNotificationPreferences,
+  NOTIFICATION_TYPE_LABELS,
+  NOTIFICATION_TYPES,
+  type NotificationPreference,
+  type NotificationType,
+} from "@/lib/mock-notifications";
+import {
+  mockSubscription,
+  mockInvoices,
+  PLAN_COMPARISON,
+  formatBillingCurrency,
+  formatBillingDate,
+  usagePercent,
+  meterTone,
+  type Invoice,
+} from "@/lib/mock-billing";
+import { useBillingPastDue } from "@/lib/use-mock-billing";
 
 interface OrgFormState {
   name: string;
@@ -535,6 +557,257 @@ function SecurityTabContent() {
   );
 }
 
+function NotificationPreferencesCard() {
+  const [prefs, setPrefs] = useState<Record<NotificationType, NotificationPreference>>(getNotificationPreferences);
+  const [saving, setSaving] = useState(false);
+
+  function toggle(type: NotificationType, channel: "email" | "inApp") {
+    setPrefs((prev) => ({
+      ...prev,
+      [type]: { ...prev[type], [channel]: !prev[type][channel] },
+    }));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    saveNotificationPreferences(prefs);
+    setSaving(false);
+    toast.success("Notification preferences saved");
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Notification preferences</CardTitle>
+        <CardDescription>Choose how each notification type reaches you. Critical billing alerts cannot be disabled.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="overflow-hidden rounded-md border border-border">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-border bg-neutral-50 text-left text-xs font-medium text-neutral-600">
+                <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2 text-center">Email</th>
+                <th className="px-3 py-2 text-center">In-app</th>
+              </tr>
+            </thead>
+            <tbody>
+              {NOTIFICATION_TYPES.map((type) => (
+                <tr key={type} className="border-b border-border last:border-0">
+                  <td className="px-3 py-2.5 font-medium text-neutral-950">{NOTIFICATION_TYPE_LABELS[type]}</td>
+                  <td className="px-3 py-2.5 text-center">
+                    <Switch
+                      checked={prefs[type].email}
+                      onCheckedChange={() => toggle(type, "email")}
+                      aria-label={`Email ${NOTIFICATION_TYPE_LABELS[type]}`}
+                    />
+                  </td>
+                  <td className="px-3 py-2.5 text-center">
+                    {type === "billing_past_due" ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex cursor-not-allowed">
+                            <Switch checked disabled className="cursor-not-allowed" aria-label="In-app Payment past due" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>Critical account notifications cannot be disabled</TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <Switch
+                        checked={prefs[type].inApp}
+                        onCheckedChange={() => toggle(type, "inApp")}
+                        aria-label={`In-app ${NOTIFICATION_TYPE_LABELS[type]}`}
+                      />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "Saving…" : "Save preferences"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function UsageMeter({ label, usedLabel, percent }: { label: string; usedLabel: string; percent: number }) {
+  const tone = meterTone(percent);
+  const barClass = tone === "success" ? "bg-success" : tone === "warning" ? "bg-warning" : "bg-danger";
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span className="font-medium text-neutral-950">{label}</span>
+        <span className="text-neutral-600">{usedLabel}</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100">
+        <div className={cn("h-full rounded-full", barClass)} style={{ width: `${Math.min(100, percent)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function BillingTabContent({ role }: { role: UserRole }) {
+  const isOwner = role === "owner";
+  const [pastDue, setPastDue] = useBillingPastDue();
+  const subscription = mockSubscription;
+
+  const aiPercent = usagePercent(subscription.aiAgentRuns.used, subscription.aiAgentRuns.limit);
+  const workflowPercent = usagePercent(subscription.workflowRuns.used, subscription.workflowRuns.limit);
+  const kbPercent = usagePercent(subscription.kbStorageMB.used, subscription.kbStorageMB.limitMB);
+
+  const invoiceColumns: DataTableColumn<Invoice>[] = [
+    { key: "date", header: "Date", accessor: (inv) => formatBillingDate(inv.date) },
+    { key: "amount", header: "Amount", accessor: (inv) => formatBillingCurrency(inv.amount, inv.currency) },
+    {
+      key: "status",
+      header: "Status",
+      accessor: (inv) => <StatusBadge variant={inv.status === "paid" ? "success" : "warning"}>{inv.status}</StatusBadge>,
+    },
+    {
+      key: "actions",
+      header: "",
+      accessor: () => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            toast.info("Invoice PDF would download here");
+          }}
+        >
+          <Download className="size-3.5" />
+          Download PDF
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Billing demo</CardTitle>
+          <CardDescription>Simulate billing states to preview the UI.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-medium text-neutral-950">Simulate past-due state</span>
+            <span className="text-xs text-neutral-600">Demo only. Shows the past-due banner across the whole app.</span>
+          </div>
+          <Switch checked={pastDue} onCheckedChange={setPastDue} aria-label="Simulate past-due state" />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            Current plan
+            <StatusBadge variant="success">Pro</StatusBadge>
+          </CardTitle>
+          <CardDescription>Renews {formatBillingDate(subscription.currentPeriodEnd)}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-neutral-600">
+            You&apos;re on the Pro plan with unlimited seats and expanded usage limits.
+          </p>
+          {isOwner && (
+            <div>
+              <Button onClick={() => toast.info("This would open the Stripe customer portal")}>Manage subscription</Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Usage</CardTitle>
+          <CardDescription>Your current usage against plan limits.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="font-medium text-neutral-950">Seats</span>
+            <span className="text-neutral-600">
+              {subscription.seats.used} seats used · {subscription.seats.label}
+            </span>
+          </div>
+          <UsageMeter
+            label="AI Agent Runs"
+            usedLabel={`${subscription.aiAgentRuns.used.toLocaleString()} / ${subscription.aiAgentRuns.limit.toLocaleString()} runs (${Math.round(aiPercent * 10) / 10}%)`}
+            percent={aiPercent}
+          />
+          <UsageMeter
+            label="Workflow Runs"
+            usedLabel={`${subscription.workflowRuns.used.toLocaleString()} / ${subscription.workflowRuns.limit.toLocaleString()} runs (${Math.round(workflowPercent * 10) / 10}%)`}
+            percent={workflowPercent}
+          />
+          <UsageMeter
+            label="KB Storage"
+            usedLabel={`${subscription.kbStorageMB.label} (${Math.round(kbPercent * 10) / 10}%)`}
+            percent={kbPercent}
+          />
+        </CardContent>
+      </Card>
+
+      {isOwner && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Plans</CardTitle>
+              <CardDescription>Compare what&apos;s included on each plan.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="overflow-hidden rounded-md border border-border">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-neutral-50 text-left text-xs font-medium text-neutral-600">
+                      <th className="px-3 py-2">Feature</th>
+                      <th className="px-3 py-2">Free</th>
+                      <th className="bg-primary/5 px-3 py-2 text-primary">Pro · Current</th>
+                      <th className="px-3 py-2">Enterprise</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {PLAN_COMPARISON.map((row) => (
+                      <tr key={row.feature} className="border-b border-border last:border-0">
+                        <td className="px-3 py-2.5 font-medium text-neutral-950">{row.feature}</td>
+                        <td className="px-3 py-2.5 text-neutral-600">{row.free}</td>
+                        <td className="bg-primary/5 px-3 py-2.5 font-medium text-neutral-950">{row.pro}</td>
+                        <td className="px-3 py-2.5 text-neutral-600">{row.enterprise}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => toast.info("Contact us to upgrade to Enterprise")}>
+                  Upgrade to Enterprise
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Invoice history</CardTitle>
+              <CardDescription>Past invoices for your subscription.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DataTable columns={invoiceColumns} data={mockInvoices} getRowId={(inv) => inv.id} hasMore={false} />
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const role = mockSession.user.role;
 
@@ -549,6 +822,20 @@ export default function SettingsPage() {
       label: "Security",
       content: <SecurityTabContent />,
     },
+    {
+      value: "notifications",
+      label: "Notifications",
+      content: <NotificationPreferencesCard />,
+    },
+    ...(role === "owner" || role === "admin"
+      ? [
+          {
+            value: "billing",
+            label: "Billing",
+            content: <BillingTabContent role={role} />,
+          },
+        ]
+      : []),
     ...(canManageOrgDangerZone(role)
       ? [
           {
