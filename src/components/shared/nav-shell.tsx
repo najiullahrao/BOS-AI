@@ -23,6 +23,8 @@ import { getAdminPortalItem, getVisiblePrimaryNavItems, type NavItem } from "@/l
 import { useMockOrgDeletion } from "@/lib/use-mock-org-deletion";
 import { daysUntilPermanentDeletion } from "@/lib/mock-org";
 import { toast } from "@/components/shared/toast";
+import { NotificationBell } from "@/components/shared/notification-bell";
+import { useBillingPastDue } from "@/lib/use-mock-billing";
 
 export interface NavShellProps {
   session?: SessionContext;
@@ -162,6 +164,21 @@ function OrgDeletionBanner({ role }: { role: SessionContext["user"]["role"] }) {
   );
 }
 
+function BillingPastDueBanner({ role }: { role: SessionContext["user"]["role"] }) {
+  const [pastDue] = useBillingPastDue();
+
+  if (!pastDue || (role !== "owner" && role !== "admin")) return null;
+
+  return (
+    <div className="flex items-center gap-2 border-b border-danger/30 bg-danger/10 px-4 py-2 text-sm text-neutral-950">
+      <TriangleAlert className="size-4 shrink-0 text-danger" aria-hidden="true" />
+      <span className="flex-1">
+        Your last payment failed. Update your payment method within 7 days to avoid feature restrictions.
+      </span>
+    </div>
+  );
+}
+
 function UserMenu({ session }: { session: SessionContext }) {
   return (
     <DropdownMenu>
@@ -222,10 +239,14 @@ export function NavShell({ session = mockSession, children }: NavShellProps) {
             <OrgSwitcher session={session} activeOrgId={activeOrgId} onSwitchOrg={setActiveOrgId} />
           </div>
 
-          <UserMenu session={session} />
+          <div className="flex items-center gap-1">
+            <NotificationBell />
+            <UserMenu session={session} />
+          </div>
         </header>
 
         <OrgDeletionBanner role={session.user.role} />
+        <BillingPastDueBanner role={session.user.role} />
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
       </div>
