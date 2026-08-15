@@ -2,10 +2,12 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Ticket as TicketIcon } from "lucide-react";
+import Link from "next/link";
+import { History, Plus, Sparkles, Ticket as TicketIcon } from "lucide-react";
 import { PageHeader, type Breadcrumb } from "@/components/shared/page-header";
 import { DetailLayout, type DetailTab } from "@/components/shared/detail-layout";
 import { StatusBadge, type StatusBadgeProps } from "@/components/shared/status-badge";
+import { AIPanel } from "@/components/shared/ai-panel";
 import { EmptyState } from "@/components/shared/empty-state";
 import { toast } from "@/components/shared/toast";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -20,6 +22,7 @@ import {
   type PipelineStage,
   type TimelineEntry,
 } from "@/lib/mock-crm";
+import { recordAgentRun } from "@/lib/mock-agent-runs";
 
 export type CrmEntityType = "contact" | "company" | "deal";
 
@@ -289,6 +292,73 @@ function LinkedContactsTab({ contacts }: { contacts: LinkedContactSummary[] }) {
   );
 }
 
+const SALES_FOLLOWUP_DRAFT = (dealName: string) =>
+  `Hi there,\n\nFollowing up on ${dealName} — I wanted to make sure we have everything you need to move forward. Happy to walk through next steps or adjust the proposal at your convenience.\n\nLooking forward to hearing from you,\n${mockSession.user.name}`;
+
+const SALES_SUMMARY_DRAFT = (dealName: string) =>
+  `Deal summary — ${dealName}\n\n· Stage and pipeline position up to date\n· Key contact and company context captured\n· Next step: schedule a follow-up call or share an updated proposal`;
+
+function SalesAgentPanel({ dealName }: { dealName: string }) {
+  const [activePanel, setActivePanel] = useState<"followup" | "summary" | null>(null);
+  const [state, setState] = useState<"thinking" | "default">("default");
+  const [draft, setDraft] = useState<string | null>(null);
+
+  async function run(kind: "followup" | "summary") {
+    if (state === "thinking") return;
+    setActivePanel(kind);
+    setState("thinking");
+    setDraft(null);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    setDraft(kind === "followup" ? SALES_FOLLOWUP_DRAFT(dealName) : SALES_SUMMARY_DRAFT(dealName));
+    setState("default");
+    recordAgentRun({
+      agent: "sales",
+      title: `${kind === "followup" ? "Draft follow-up" : "Summarize deal"} · ${dealName}`,
+      status: "completed",
+      duration_ms: 800,
+    });
+  }
+
+  function copyDraft() {
+    if (!draft) return;
+    navigator.clipboard?.writeText(draft).catch(() => {});
+    toast.success("Draft copied to clipboard");
+    setActivePanel(null);
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm" onClick={() => run("followup")} disabled={state === "thinking"}>
+          <Sparkles className="size-3.5" />
+          Draft follow-up email
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => run("summary")} disabled={state === "thinking"}>
+          <Sparkles className="size-3.5" />
+          Summarize deal
+        </Button>
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/ai-agents/runs?agent=sales">
+            <History className="size-3.5" />
+            Run history
+          </Link>
+        </Button>
+      </div>
+
+      {activePanel && (
+        <AIPanel
+          label="AI Draft"
+          state={state}
+          content={draft ? <p className="whitespace-pre-wrap">{draft}</p> : null}
+          onDiscard={() => setActivePanel(null)}
+          onEdit={copyDraft}
+          onInsert={copyDraft}
+        />
+      )}
+    </div>
+  );
+}
+
 export function CrmDetailTemplate({
   entityType,
   title,
@@ -318,6 +388,7 @@ export function CrmDetailTemplate({
 
   const tabs: DetailTab[] = [
     { value: "activity", label: "Activity", content: <ActivityTab timeline={timeline} onAddNote={handleAddNote} /> },
+    ...(entityType === "deal" ? [{ value: "ai", label: "AI Drafts", content: <SalesAgentPanel dealName={title} /> }] : []),
     ...(entityType === "company" ? [{ value: "contacts", label: "Contacts", content: <LinkedContactsTab contacts={linkedContacts ?? []} /> }] : []),
     ...(entityType !== "deal" ? [{ value: "deals", label: "Deals", content: <LinkedDealsTab deals={linkedDeals ?? []} /> }] : []),
     { value: "notes", label: "Notes", content: <NotesTab timeline={timeline} onGoToActivity={() => setActiveTab("activity")} /> },
