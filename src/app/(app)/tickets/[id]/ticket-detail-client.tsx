@@ -2,11 +2,12 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { Sparkles, FileText, Lock } from "lucide-react";
+import { Sparkles, FileText, History, Lock } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DetailLayout, type DetailTab } from "@/components/shared/detail-layout";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { AIPanel } from "@/components/shared/ai-panel";
+import { Drawer } from "@/components/shared/drawer";
 import { EmptyState } from "@/components/shared/empty-state";
 import { toast } from "@/components/shared/toast";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -15,8 +16,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { getUserInitials } from "@/lib/mock-data";
-import { formatFullDate, getContactFullName, getDealsForContact } from "@/lib/mock-crm";
+import { formatFullDate, formatRelativeTime, getContactFullName, getDealsForContact } from "@/lib/mock-crm";
 import { mockTeamMembers } from "@/lib/mock-team";
+import { formatRunDuration, getRunsForAgent, recordAgentRun, type AgentRun } from "@/lib/mock-agent-runs";
 import {
   getCrmRecordForContactName,
   getMockSuggestReply,
@@ -110,6 +112,8 @@ export function TicketDetailClient({ ticket: initialTicket, initialComments }: {
   const [summaryState, setSummaryState] = useState<"thinking" | "default">("thinking");
   const [summary, setSummary] = useState<string | null>(null);
 
+  const [historyOpen, setHistoryOpen] = useState(false);
+
   const sla = getSlaBadge(ticket);
   const crmRecord = getCrmRecordForContactName(ticket.contact);
   const pastTicketCount = getTicketCountForContact(ticket.contact, ticket.id);
@@ -126,6 +130,7 @@ export function TicketDetailClient({ ticket: initialTicket, initialComments }: {
     await delay(700);
     setSuggestion(getMockSuggestReply(ticket.id));
     setSuggestState("default");
+    recordAgentRun({ agent: "support", title: `Suggest Reply · ${ticket.subject}`, status: "completed", duration_ms: 700 });
   }
 
   async function handleSummarize() {
@@ -135,6 +140,7 @@ export function TicketDetailClient({ ticket: initialTicket, initialComments }: {
     await delay(500);
     setSummary(getMockThreadSummary(ticket.id));
     setSummaryState("default");
+    recordAgentRun({ agent: "support", title: `Summarize Thread · ${ticket.subject}`, status: "completed", duration_ms: 500 });
   }
 
   function insertDraft(closePanel: boolean) {
@@ -170,6 +176,10 @@ export function TicketDetailClient({ ticket: initialTicket, initialComments }: {
         <Button variant="outline" size="sm" onClick={handleSummarize}>
           <FileText className="size-3.5" />
           Summarize Thread
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+          <History className="size-3.5" />
+          Run history
         </Button>
       </div>
 
@@ -318,7 +328,53 @@ export function TicketDetailClient({ ticket: initialTicket, initialComments }: {
         tabs={tabs}
         sidebar={<ContactSidebar contactName={ticket.contact} pastTicketCount={pastTicketCount} record={crmRecord} />}
       />
+
+      <SupportRunHistoryDrawer open={historyOpen} onOpenChange={setHistoryOpen} />
     </div>
+  );
+}
+
+function SupportRunHistoryDrawer({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const runs = getRunsForAgent("support");
+
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Support Agent run history"
+      description="Recent runs of the Support Agent across tickets."
+      footer={
+        <Link href="/ai-agents/runs?agent=support" className="w-full">
+          <Button variant="outline" size="sm" className="w-full">
+            View all in run history
+          </Button>
+        </Link>
+      }
+    >
+      {runs.length === 0 ? (
+        <EmptyState variant="first-time" message="No Support Agent runs yet." ctaLabel="Close" onCtaClick={() => onOpenChange(false)} />
+      ) : (
+        <ul className="flex flex-col divide-y divide-border">
+          {runs.map((run: AgentRun) => (
+            <li key={run.id} className="flex flex-col gap-1 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-neutral-950" title={run.title}>
+                  {run.title}
+                </span>
+                <StatusBadge variant={run.status === "completed" ? "success" : run.status === "failed" ? "danger" : "warning"}>
+                  {run.status}
+                </StatusBadge>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-neutral-600">
+                <span>{formatRelativeTime(run.created_at)}</span>
+                <span aria-hidden="true">·</span>
+                <span>{formatRunDuration(run.duration_ms)}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Drawer>
   );
 }
 

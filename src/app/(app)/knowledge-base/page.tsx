@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw, Upload } from "lucide-react";
+import Link from "next/link";
+import { History, RefreshCw, Sparkles, Upload } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type DataTableColumn, type DataTableSort } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { AIPanel } from "@/components/shared/ai-panel";
 import { toast } from "@/components/shared/toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +22,7 @@ import {
   type KbDocument,
 } from "@/lib/mock-kb";
 import { formatDateTime } from "@/lib/mock-sessions";
+import { recordAgentRun } from "@/lib/mock-agent-runs";
 import { KbCategoryTree } from "@/app/(app)/knowledge-base/kb-category-tree";
 import { KbUploadModal } from "@/app/(app)/knowledge-base/kb-upload-modal";
 
@@ -30,6 +33,73 @@ const CATEGORY_OPTIONS = Array.from(new Set(mockKbDocuments.map((d) => d.categor
 
 const ACCESS_OPTIONS = Object.entries(ACCESS_LEVEL_LABELS).map(([value, label]) => ({ label, value }));
 const INGESTION_OPTIONS = Object.entries(INGESTION_LABELS).map(([value, label]) => ({ label, value }));
+
+const CONTENT_SUGGESTIONS = `Suggestions for "Getting Started Guide":
+
+· Add a section on export limits to reduce repeated timeouts — the workaround already lives in "Exporting Large Reports" (kb_2).
+· Promote the guide to public access level; it answers common customer questions.
+· Bump the version and re-run ingestion to refresh the search index (currently processing).
+· Add a short checklist at the top for faster skimming.`;
+
+function ContentAgentCard() {
+  const [state, setState] = useState<"thinking" | "default">("default");
+  const [suggestions, setSuggestions] = useState<string | null>(null);
+
+  async function handleSuggest() {
+    if (state === "thinking") return;
+    setState("thinking");
+    setSuggestions(null);
+    await new Promise((resolve) => setTimeout(resolve, 850));
+    setSuggestions(CONTENT_SUGGESTIONS);
+    setState("default");
+    recordAgentRun({ agent: "content", title: "Suggest improvements · Getting Started Guide", status: "completed", duration_ms: 850 });
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex size-9 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Sparkles className="size-4" aria-hidden="true" />
+          </span>
+          <div>
+            <h2 className="text-sm font-semibold text-neutral-950">Content Agent</h2>
+            <p className="text-xs text-neutral-600">Improves and summarizes knowledge base documents.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleSuggest} disabled={state === "thinking"}>
+            <Sparkles className="size-3.5" />
+            Suggest improvements
+          </Button>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/ai-agents/runs?agent=content">
+              <History className="size-3.5" />
+              Run history
+            </Link>
+          </Button>
+        </div>
+      </div>
+
+      {suggestions && (
+        <AIPanel
+          label="Doc Improvements"
+          state={state}
+          content={<p className="whitespace-pre-wrap">{suggestions}</p>}
+          onDiscard={() => setSuggestions(null)}
+          onEdit={() => {
+            navigator.clipboard?.writeText(suggestions).catch(() => {});
+            toast.success("Suggestions copied to clipboard");
+          }}
+          onInsert={() => {
+            navigator.clipboard?.writeText(suggestions).catch(() => {});
+            toast.success("Suggestions copied to clipboard");
+          }}
+        />
+      )}
+    </div>
+  );
+}
 
 export default function KnowledgeBasePage() {
   const router = useRouter();
@@ -149,6 +219,8 @@ export default function KnowledgeBasePage() {
         breadcrumbs={[{ label: "Home", href: "/dashboard" }, { label: "Knowledge Base" }]}
         primaryAction={{ label: "Upload document", icon: Upload, onClick: () => setUploadOpen(true) }}
       />
+
+      <ContentAgentCard />
 
       <div className="grid gap-6 md:grid-cols-[220px_1fr]">
         <KbCategoryTree selectedId={selectedCategoryId} onSelect={setSelectedCategoryId} />
