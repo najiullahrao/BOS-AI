@@ -18,7 +18,7 @@ export default function ContactsPage() {
   const [newContactOpen, setNewContactOpen] = useState(false);
 
   const filtered = useMemo(() => {
-    const search = (filters.name ?? "").trim().toLowerCase();
+    const search = (filters.first_name ?? "").trim().toLowerCase();
     const rows = contacts.filter((c) => {
       if (!search) return true;
       const haystack = `${c.first_name} ${c.last_name} ${c.email} ${c.phone ?? ""} ${c.title} ${c.company}`.toLowerCase();
@@ -34,7 +34,7 @@ export default function ContactsPage() {
     });
   }, [contacts, filters, sort]);
 
-  const hasActiveFilters = Boolean(filters.name);
+  const hasActiveFilters = Boolean(filters.first_name);
 
   const columns: DataTableColumn<Contact>[] = [
     {

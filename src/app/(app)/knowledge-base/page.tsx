@@ -47,8 +47,8 @@ export default function KnowledgeBasePage() {
       if (categoryIds && !categoryIds.has(getCategoryIdByName(d.category) ?? "")) return false;
       if (search && !d.title.toLowerCase().includes(search)) return false;
       if (filters.category && d.category !== filters.category) return false;
-      if (filters.access && d.access_level !== filters.access) return false;
-      if (filters.ingestion && d.ingestion_status !== filters.ingestion) return false;
+      if (filters.access_level && d.access_level !== filters.access_level) return false;
+      if (filters.ingestion_status && d.ingestion_status !== filters.ingestion_status) return false;
       return true;
     });
 
@@ -60,7 +60,7 @@ export default function KnowledgeBasePage() {
     });
   }, [documents, selectedCategoryId, filters, sort]);
 
-  const hasActiveFilters = Boolean(filters.title || filters.category || filters.access || filters.ingestion);
+  const hasActiveFilters = Boolean(filters.title || filters.category || filters.access_level || filters.ingestion_status);
 
   const handleRetry = async (doc: KbDocument) => {
     try {
