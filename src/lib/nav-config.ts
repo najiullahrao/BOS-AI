@@ -11,6 +11,9 @@ import {
   Settings,
   ShieldCheck,
   UserCog,
+  Building2,
+  Search,
+  Flag,
 } from "lucide-react";
 import type { CurrentUser, UserRole } from "@/lib/mock-data";
 
@@ -44,10 +47,21 @@ export const ADMIN_PORTAL_ITEM: NavItem = {
   isAdminOnly: true,
 };
 
+export const ADMIN_NAV_ITEMS: NavItem[] = [
+  { label: "Organizations", href: "/admin/organizations", icon: Building2 },
+  { label: "User Search", href: "/admin/users", icon: Search },
+  { label: "Platform Metrics", href: "/admin/metrics", icon: BarChart3 },
+  { label: "Feature Flags", href: "/admin/feature-flags", icon: Flag },
+];
+
 export function getVisiblePrimaryNavItems(user: CurrentUser): NavItem[] {
   return PRIMARY_NAV_ITEMS.filter((item) => !item.hiddenForRoles?.includes(user.role));
 }
 
 export function getAdminPortalItem(user: CurrentUser): NavItem | null {
   return user.platform_admin ? ADMIN_PORTAL_ITEM : null;
+}
+
+export function getAdminNavItems(): NavItem[] {
+  return ADMIN_NAV_ITEMS;
 }

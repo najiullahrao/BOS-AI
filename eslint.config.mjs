@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Ad-hoc Playwright smoke scripts (gitignored scratch tooling).
+    // Narrowed from e2e/** so committed test files added later get linted.
+    "e2e/smoke-*.js",
   ]),
 ]);
 

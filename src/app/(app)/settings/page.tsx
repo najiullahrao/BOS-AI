@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, X, TriangleAlert, Download } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
@@ -55,6 +55,14 @@ import {
   type Invoice,
 } from "@/lib/mock-billing";
 import { useBillingPastDue } from "@/lib/use-mock-billing";
+import { AuditLogTabContent } from "@/app/(app)/settings/audit-log-tab";
+import {
+  EMPTY_AUDIT_FILTERS,
+  exportAuditLogCsv,
+  filterAuditLog,
+  mockAuditLogEntries,
+  type AuditLogFilters,
+} from "@/lib/mock-audit-log";
 
 interface OrgFormState {
   name: string;
@@ -810,6 +818,11 @@ function BillingTabContent({ role }: { role: UserRole }) {
 
 export default function SettingsPage() {
   const role = mockSession.user.role;
+  const [activeTab, setActiveTab] = useState("general");
+  const [auditFilters, setAuditFilters] = useState<AuditLogFilters>(EMPTY_AUDIT_FILTERS);
+  const [simulateFreePlan, setSimulateFreePlan] = useState(false);
+  const canViewAuditLog = role === "owner" || role === "admin";
+  const filteredAuditEntries = useMemo(() => filterAuditLog(mockAuditLogEntries, auditFilters), [auditFilters]);
 
   const tabs = [
     {
@@ -834,6 +847,23 @@ export default function SettingsPage() {
             label: "Billing",
             content: <BillingTabContent role={role} />,
           },
+          {
+            value: "audit",
+            label: "Audit Log",
+            content: (
+              <AuditLogTabContent
+                locked={simulateFreePlan || mockSubscription.plan === "free"}
+                entries={filteredAuditEntries}
+                filters={auditFilters}
+                onFiltersChange={setAuditFilters}
+                onSimulateFreeChange={setSimulateFreePlan}
+                onUpgrade={() => {
+                  setSimulateFreePlan(false);
+                  setActiveTab("billing");
+                }}
+              />
+            ),
+          },
         ]
       : []),
     ...(canManageOrgDangerZone(role)
@@ -849,11 +879,21 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Settings" breadcrumbs={[{ label: "Home", href: "/dashboard" }, { label: "Settings" }]} />
+      <PageHeader
+        title="Settings"
+        breadcrumbs={[{ label: "Home", href: "/dashboard" }, { label: "Settings" }]}
+        primaryAction={
+          canViewAuditLog && activeTab === "audit"
+            ? { label: "Export to CSV", icon: Download, onClick: () => exportAuditLogCsv(filteredAuditEntries) }
+            : undefined
+        }
+      />
 
       <DetailLayout
         header={<p className="text-sm text-neutral-600">Manage your account, security, and preferences.</p>}
         tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
       />
     </div>
   );
